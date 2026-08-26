@@ -1,0 +1,23 @@
+# ---- Docker 构建上下文排除项 ----
+# 运行时数据
+data/
+backups/
+exports/
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Git / 版本控制
+.git/
+.gitignore
+
+# 部署包与临时文件
+*.tar.gz
+*.log
+nohup.out
+
+# 内部开发脚本
+_inject_auth.py

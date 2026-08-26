@@ -1,0 +1,23 @@
+# 生产排程系统（APS）v1.0 - Docker Compose 部署
+# 用法：
+#   docker compose up -d --build      # 构建并后台启动
+#   docker compose logs -f scheduler  # 查看启动日志（含初始管理员密码）
+services:
+  scheduler:
+    build: .
+    image: production-scheduler:latest
+    container_name: production-scheduler
+    ports:
+      - "8899:8899"          # 宿主机端口:容器端口，可改左侧为你想要的端口
+    environment:
+      # 可选：预设初始管理员密码（首次启动且库中无用户时生效）
+      # 不设置则每次随机生成并打印在启动日志中
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - TZ=Asia/Shanghai
+    volumes:
+      # 数据库持久化到命名卷，升级/重建容器数据不丢失
+      - scheduler-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  scheduler-data:

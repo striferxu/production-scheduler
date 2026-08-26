@@ -56,6 +56,9 @@ production-scheduler/
 ├── requirements.txt                # Python 依赖清单
 ├── check_deps.py                   # 缺失依赖检测脚本（start.sh 调用）
 ├── start.sh                        # 一键启动脚本（增量装依赖）
+├── Dockerfile                      # Docker 镜像构建文件
+├── docker-compose.yml              # Docker Compose 编排（数据库持久化）
+├── .dockerignore                   # Docker 构建上下文排除
 ├── data/                           # 运行时数据库（自动创建，不入库）
 ├── backups/                        # 备份目录（自动创建，不入库）
 ├── exports/                        # Excel 导出目录（自动创建，不入库）
@@ -106,6 +109,44 @@ sudo cp deploy/production-scheduler.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now production-scheduler
 ```
+
+### 方式三：Docker 部署（推荐）
+
+适合需要**干净隔离环境**、或频繁在多台机器间迁移的场景。仓库已内置 `Dockerfile` 与 `docker-compose.yml`。
+
+```bash
+# 前置：本机已安装 Docker Engine + Docker Compose
+
+# 1. 构建镜像并后台启动（首次会自动下载 python:3.12-slim 基础镜像）
+docker compose up -d --build
+
+# 2. 查看启动日志（含随机生成的初始管理员密码）
+docker compose logs -f scheduler
+#   → 日志中出现：[提示] 初始密码: xxxxxxxxxx
+```
+
+- 访问界面：`http://<服务器IP>:8899`
+- 端口修改：编辑 `docker-compose.yml` 中 `ports: "8899:8899"` 左侧值，改后重启
+- 预设初始密码（可选）：
+
+  ```bash
+  ADMIN_PASSWORD=yourpassword docker compose up -d
+  ```
+
+- 数据库持久化在命名卷 `scheduler-data`，重建容器**数据不丢失**。
+
+**常用管理命令：**
+
+```bash
+docker compose ps                  # 查看状态
+docker compose logs -f scheduler   # 实时日志
+docker compose down                # 停止并删除容器（数据卷保留）
+docker compose down -v             # ⚠️ 连同数据卷一起删除（会清空数据库）
+docker compose up -d               # 重新启动
+```
+
+> 备份数据库：`docker volume` 数据在命名卷 `scheduler-data` 中，可执行
+> `docker run --rm -v scheduler-data:/data -v $(pwd):/backup alpine tar czf /backup/scheduler-data.tgz -C /data .` 备份。
 
 ---
 
