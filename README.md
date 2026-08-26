@@ -238,8 +238,9 @@ tar -tzf production-scheduler.tar.gz
 ```bash
 tar -czf production-scheduler.tar.gz \
   --exclude='venv' --exclude='__pycache__' --exclude='*.pyc' \
-  --exclude='data' --exclude='backups' --exclude='exports' \
-  backend frontend deploy requirements.txt start.sh check_deps.py
+  --exclude='data' --exclude='backups' --exclude='exports' --exclude='*.tar.gz' \
+  backend frontend deploy requirements.txt start.sh check_deps.py \
+  README.md Dockerfile docker-compose.yml .dockerignore
 ```
 
 ---
