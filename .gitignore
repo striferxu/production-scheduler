@@ -1,0 +1,28 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+
+# ---- 虚拟环境 ----
+venv/
+.venv/
+env/
+
+# ---- 运行时数据（不进版本控制）----
+data/
+backups/
+exports/
+
+# ---- 内部开发辅助脚本（不公开）----
+_inject_auth.py
+
+# ---- 系统 / 编辑器 ----
+.DS_Store
+*.swp
+*.log
+nohup.out
+
+# ---- 上传/临时 ----
+*.tmp

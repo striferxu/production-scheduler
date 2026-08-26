@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>生产排程系统 v1.0</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- 登录界面 -->
+<div id="login-page">
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#1a365d,#2563eb);">
+    <div style="background:white;border-radius:16px;padding:40px;width:400px;box-shadow:0 20px 60px rgba(0,0,0,0. medieframework);">
+      <h2 style="text-align:center;color:#1a365d;margin-bottom:8px;">🏭 生产排程系统</h2>
+      <p style="text-align:center;color:#6b7280;margin-bottom:24px;font-size:14px;">APS V1.0 - 有限产能排程</p>
+      <div class="form-group" style="margin-bottom:12px;"><label>用户名</label><input id="login-username" value="admin" style="width:100%"></div>
+      <div class="form-group" style="margin-bottom:20px;"><label>密码</label><input id="login-password" type="password" value="admin123" style="width:100%" onkeydown="if(event.key==='Enter')login()"></div>
+      <button class="btn btn-primary" onclick="login()" style="width:100%;padding:10px;">登 录</button>
+      <p id="login-error" style="color:#dc2626;text-align:center;margin-top:12px;font-size:13px;"></p>
+    </div>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div id="app-page" class="hidden">
+  <!-- 顶部导航 -->
+  <nav class="navbar">
+    <div style="display:flex;align-items:center;gap:16px;">
+      <h1>🏭 生产排程系统</h1>
+      <div class="nav-links">
+        <button onclick="switchPage('dashboard')" data-page="dashboard" class="active">📊 仪表盘</button>
+        <button onclick="switchPage('master-data')" data-page="master-data">🗂 基础数据</button>
+        <button onclick="switchPage('schedule')" data-page="schedule">📋 排程执行</button>
+        <button onclick="switchPage('gantt')" data-page="gantt">📈 甘特图</button>
+        <button onclick="switchPage('export')" data-page="export">📥 导出派工单</button>
+      </div>
+    </div>
+    <div class="user-info">
+      <span id="current-user">管理员</span>
+      <button onclick="logout()">退出</button>
+    </div>
+  </nav>
+
+  <div class="main-content">
+
+    <!-- ========== 仪表盘 ========== -->
+    <div id="page-dashboard" class="page active">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px;">
+        <div class="panel" style="text-align:center;padding:20px;"><h3 style="color:#2563eb;" id="stat-products">-</h3><p style="color:#6b7280;">产品数量</p></div>
+        <div class="panel" style="text-align:center;padding:20px;"><h3 style="color:#059669;" id="stat-devices">-</h3><p style="color:#6b7280;">设备数量</p></div>
+        <div class="panel" style="text-align:center;padding:20px;"><h3 style="color:#d97706;" id="stat-employees">-</h3><p style="color:#6b7280;">员工数量</p></div>
+        <div class="panel" style="text-align:center;padding:20px;"><h3 style="color:#8b5cf6;" id="stat-processes">-</h3><p style="color:#6b7280;">工序数量</p></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><h2>📋 最近排程批次</h2></div>
+        <div class="panel-body" id="dashboard-batches">加载中...</div>
+      </div>
+    </div>
+
+    <!-- ========== 基础数据管理 ========== -->
+    <div id="page-master-data" class="page">
+      <div class="panel">
+        <div class="panel-header">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;" id="master-tabs"></div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-success btn-sm" onclick="seedDemo()" id="seed-btn">🎯 载入示例数据</button>
+            <button class="btn btn-outline btn-sm" onclick="exportAllData()">📥 导出全部数据</button>
+            <button class="btn btn-primary btn-sm" id="master-add-btn" onclick="openMasterModal()">+ 新增</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="table-wrap" id="master-table-wrap"><p class="empty-state">请选择左侧实体类型</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 排程执行 ========== -->
+    <div id="page-schedule" class="page">
+      <div class="panel">
+        <div class="panel-header"><h2>📋 排程参数设置</h2></div>
+        <div class="panel-body">
+          <div id="schedule-products"></div>
+          <button class="btn btn-outline btn-sm" onclick="addScheduleProduct()" style="margin-bottom:12px;">+ 添加产品</button>
+          <div style="margin-top:12px;display:flex;gap:8px;">
+            <button class="btn btn-primary" onclick="runSchedule()">🚀 执行自动排程</button>
+            <button class="btn btn-outline" onclick="clearSchedule()">清空</button>
+          </div>
+          <div id="schedule-result" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 甘特图 ========== -->
+    <div id="page-gantt" class="page">
+      <div class="panel">
+        <div class="panel-header">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <h2>📈 排程甘特图</h2>
+            <div class="view-tabs">
+              <button class="view-tab active" onclick="switchGanttView('device')" id="gantt-view-device">🖥 设备视图</button>
+              <button class="view-tab" onclick="switchGanttView('employee')" id="gantt-view-employee">👤 人员视图</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <select id="gantt-batch-select" onchange="loadGantt()" style="padding:6px;border-radius:6px;border:1px solid #d1d5db;"></select>
+            <button class="btn btn-outline btn-sm" onclick="unlockAllTasks()">🔓 全部解锁</button>
+            <button class="btn btn-warning btn-sm" onclick="rerunSchedule()">🔄 重算</button>
+          </div>
+        </div>
+        <div class="panel-body" style="padding:0;">
+          <div class="gantt-container" id="gantt-container">
+            <p class="empty-state">请先执行排程，然后查看甘特图</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 导出派工单 ========== -->
+    <div id="page-export" class="page">
+      <div class="panel">
+        <div class="panel-header"><h2>📥 导出派工单</h2></div>
+        <div class="panel-body">
+          <div class="form-row">
+            <div class="form-group"><label>批次</label><select id="export-batch" style="min-width:200px;"></select></div>
+            <div class="form-group"><label>时间范围</label><select id="export-timerange" style="min-width:120px;">
+              <option value="day">今日派工</option><option value="week">本周派工</option><option value="month">本月派工</option>
+            </select></div>
+            <div class="form-group"><label>&nbsp;</label><button class="btn btn-primary" onclick="exportExcel()">📥 导出 Excel</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ========== 通用模态框 ========== -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">编辑</h3>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;">&times;</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" id="modal-save-btn" onclick="saveModal()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== 全局状态 ==========
+let currentUser = null;
+let currentMasterType = '';
+let currentEditId = null;  // 当前正在编辑的基础数据记录ID（null=新增）
+let ganttViewMode = 'device';
+let ganttTasks = [];
+let productColors = {};
+let ganttMinTime = null;
+let ganttPpm = 1;
+
+const API = '/api';
+
+// ========== 会话保持 + 统一鉴权 ==========
+const TOKEN_KEY = 'ps_token';
+const USER_KEY = 'ps_user';
+function storeSession(user) {
+  localStorage.setItem(TOKEN_KEY, user.token || '');
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+
+// 包装 fetch：自动附带 token，401 统一跳登录
+(function() {
+  const _fetch = window.fetch;
+  window.fetch = function(input, init) {
+    init = init || {};
+    const url = typeof input === 'string' ? input : (input.url || '');
+    if (url.includes('/api/')) {
+      init.headers = Object.assign({}, init.headers || {});
+      const tk = getToken();
+      if (tk && !init.headers['Authorization']) init.headers['Authorization'] = 'Bearer ' + tk;
+    }
+    return _fetch(input, init).then(res => {
+      if (res.status === 401 && !url.includes('/api/auth/login')) {
+        clearSession();
+        showLogin();
+      }
+      return res;
+    });
+  };
+})();
+
+function showLogin() {
+  currentUser = null;
+  document.getElementById('login-page').classList.remove('hidden');
+  document.getElementById('app-page').classList.add('hidden');
+}
+
+function applyRoleUI() {
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const mdBtn = document.querySelector('[data-page="master-data"]');
+  if (mdBtn) mdBtn.style.display = isAdmin ? '' : 'none';
+}
+
+// ========== Toast ==========
+function toast(msg, type='success') {
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ========== 认证 ==========
+async function login() {
+  const username = document.getElementById('login-username').value;
+  const password = document.getElementById('login-password').value;
+  try {
+    const res = await fetch(`${API}/auth/login`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username, password})
+    });
+    if (!res.ok) { document.getElementById('login-error').textContent = '用户名或密码错误'; return; }
+    currentUser = await res.json();
+    storeSession(currentUser);
+    document.getElementById('login-page').classList.add('hidden');
+    document.getElementById('app-page').classList.remove('hidden');
+    document.getElementById('current-user').textContent = `${currentUser.username} (${currentUser.role==='admin'?'管理员':'普通用户'})`;
+    // 根据角色控制界面（普通用户隐藏基础数据管理）
+    applyRoleUI();
+    initApp();
+  } catch(e) { document.getElementById('login-error').textContent = '登录失败'; }
+}
+
+function logout() {
+  clearSession();
+  showLogin();
+  document.getElementById('login-password').value = '';
+}
+
+// 页面加载时恢复会话
+(function restoreSession() {
+  const stored = localStorage.getItem(USER_KEY);
+  if (stored) {
+    try { currentUser = JSON.parse(stored); }
+    catch(e) { clearSession(); }
+  }
+  if (currentUser && currentUser.token) {
+    document.getElementById('login-page').classList.add('hidden');
+    document.getElementById('app-page').classList.remove('hidden');
+    document.getElementById('current-user').textContent = `${currentUser.username} (${currentUser.role==='admin'?'管理员':'普通用户'})`;
+    applyRoleUI();
+    initApp();
+  }
+})();
+
+// ========== 页面切换 ==========
+function switchPage(name) {
+  // 普通用户不能进入基础数据管理
+  if (name === 'master-data' && (!currentUser || currentUser.role !== 'admin')) {
+    toast('无权限访问基础数据管理', 'error');
+    name = 'dashboard';
+  }
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-links button').forEach(b => b.classList.remove('active'));
+  const page = document.getElementById(`page-${name}`);
+  if (page) page.classList.add('active');
+  const btn = document.querySelector(`[data-page="${name}"]`);
+  if (btn) btn.classList.add('active');
+  
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'master-data') initMasterData();
+  if (name === 'schedule') initSchedulePage();
+  if (name === 'gantt') loadBatches();
+  if (name === 'export') loadBatches();
+}
+
+// 当前登录用户是否为管理员
+function isAdmin() { return currentUser && currentUser.role === 'admin'; }
+
+// ========== 仪表盘 ==========
+async function initApp() {
+  switchPage('dashboard');
+}
+
+async function loadDashboard() {
+  try {
+    const [products, devices, employees, processes] = await Promise.all([
+      fetch(`${API}/products`).then(r=>r.json()),
+      fetch(`${API}/devices`).then(r=>r.json()),
+      fetch(`${API}/employees`).then(r=>r.json()),
+      fetch(`${API}/processes`).then(r=>r.json()),
+    ]);
+    document.getElementById('stat-products').textContent = products.length;
+    document.getElementById('stat-devices').textContent = devices.length;
+    document.getElementById('stat-employees').textContent = employees.length;
+    document.getElementById('stat-processes').textContent = processes.length;
+    
+    const batches = await fetch(`${API}/schedule/batches`).then(r=>r.json());
+    const html = batches.length ? batches.slice(0,10).map(b => 
+      `<tr><td>${b.batch_id}</td><td>${new Date(b.created_at).toLocaleString()}</td></tr>`
+    ).join('') : '<tr><td colspan="2">暂无排程记录</td></tr>';
+    document.getElementById('dashboard-batches').innerHTML = `<table><tr><th>批次ID</th><th>创建时间</th></tr>${html}</table>`;
+  } catch(e) { console.error(e); }
+}
+
+// ========== 基础数据管理 ==========
+const MASTER_ENTITIES = [
+  { key: 'product-categories', label: '产品分类', fields: ['name', 'description'] },
+  { key: 'products', label: '产品', fields: ['name', 'category_id', 'description'] },
+  { key: 'device-groups', label: '设备组', fields: ['name', 'description', 'work_start_time', 'work_end_time', 'status'] },
+  { key: 'devices', label: '设备', fields: ['name', 'group_id', 'description', 'work_start_time', 'work_end_time', 'status'] },
+  { key: 'processes', label: '工序', fields: ['name', 'description'] },
+  { key: 'product-routes', label: '工艺路线', fields: ['product_id', 'name'] },
+  { key: 'shifts', label: '班次', fields: ['name', 'start_time', 'end_time', 'description'] },
+  { key: 'rotations', label: '轮班模式', fields: ['name', 'cycle_days', 'description'] },
+  { key: 'employee-groups', label: '人员组别', fields: ['name', 'description'] },
+  { key: 'employees', label: '员工', fields: ['name', 'group_id', 'employee_code'] },
+];
+
+function initMasterData() {
+  const tabsDiv = document.getElementById('master-tabs');
+  tabsDiv.innerHTML = MASTER_ENTITIES.map((e, i) => 
+    `<button class="view-tab ${i===0?'active':''}" onclick="switchMasterTab('${e.key}', this)">${e.label}</button>`
+  ).join('');
+  if (MASTER_ENTITIES.length > 0) switchMasterTab(MASTER_ENTITIES[0].key);
+}
+
+async function switchMasterTab(key, btn) {
+  currentMasterType = key;
+  document.querySelectorAll('#master-tabs .view-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  await loadMasterData();
+}
+
+async function loadMasterData() {
+  const wrap = document.getElementById('master-table-wrap');
+  wrap.innerHTML = '<p class="empty-state">加载中...</p>';
+  try {
+    const data = await fetch(`${API}/${currentMasterType}`).then(r => r.json());
+    const entity = MASTER_ENTITIES.find(e => e.key === currentMasterType);
+    if (!entity) return;
+    
+    if (currentMasterType === 'product-routes') {
+      let html = '<table><tr><th>ID</th><th>产品</th><th>路线名称</th><th>工序步骤数</th><th>操作</th></tr>';
+      data.forEach(r => {
+        html += `<tr><td>${r.id}</td><td>${r.product_name||''}</td><td>${r.name||''}</td>
+          <td>${(r.steps||[]).length}</td>
+          <td><button class="btn btn-outline btn-sm" onclick="editMaster(${r.id})">编辑</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteMaster(${r.id})">删除</button></td></tr>`;
+      });
+      html += '</table>';
+      wrap.innerHTML = html;
+    } else {
+      const fields = entity.fields;
+      let html = '<table><tr><th>ID</th>' + fields.map(f => `<th>${f}</th>`).join('') + '<th>操作</th></tr>';
+      data.forEach(r => {
+        html += `<tr><td>${r.id}</td>` + fields.map(f => `<td>${r[f]||''}</td>`).join('') +
+          `<td><button class="btn btn-outline btn-sm" onclick="editMaster(${r.id})">编辑</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteMaster(${r.id})">删除</button></td></tr>`;
+      });
+      html += '</table>';
+      wrap.innerHTML = html;
+    }
+  } catch(e) { wrap.innerHTML = `<p class="empty-state">加载失败: ${e.message}</p>`; }
+}
+
+function openMasterModal(id) {
+  const entity = MASTER_ENTITIES.find(e => e.key === currentMasterType);
+  if (!entity) return;
+  currentEditId = id || null;
+  document.getElementById('modal-title').textContent = (id ? '编辑' : '新增') + entity.label;
+  
+  let html = '';
+  if (currentMasterType === 'product-routes') {
+    html = `
+      <div class="form-group"><label>产品</label><select id="f-product_id"></select></div>
+      <div class="form-group"><label>路线名称</label><input id="f-name"></div>
+      <div id="route-steps"><h4 style="margin:12px 0 8px;">工序步骤</h4></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addRouteStep()">+ 添加工序</button>
+    `;
+  } else {
+    for (const f of entity.fields) {
+      if (f.endsWith('_id')) {
+        const refKey = f.replace('_id', 's');
+        html += `<div class="form-group"><label>${f}</label><select id="f-${f}"></select></div>`;
+      } else {
+        html += `<div class="form-group"><label>${f}</label><input id="f-${f}"></div>`;
+      }
+    }
+  }
+  
+  document.getElementById('modal-body').innerHTML = html;
+  
+  // 加载下拉选项
+  loadFormOptions();
+  
+  if (id) {
+    loadMasterItem(id);
+  }
+  
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+async function loadFormOptions() {
+  const optionMap = {
+    'category_id': 'product-categories', 'group_id': 'device-groups',
+    'product_id': 'products', 'employee_code': null
+  };
+  
+  for (const [field, key] of Object.entries(optionMap)) {
+    const sel = document.getElementById(`f-${field}`);
+    if (sel && key) {
+      try {
+        const items = await fetch(`${API}/options/${key}`).then(r => r.json());
+        sel.innerHTML = '<option value="">请选择</option>' + items.map(i => `<option value="${i.value}">${i.label}</option>`).join('');
+      } catch(e) {}
+    }
+  }
+}
+
+async function loadMasterItem(id) {
+  try {
+    const item = await fetch(`${API}/${currentMasterType}/${id}`).then(r => r.json());
+    const entity = MASTER_ENTITIES.find(e => e.key === currentMasterType);
+    if (!entity) return;
+    
+    if (currentMasterType === 'product-routes') {
+      document.getElementById('f-product_id').value = item.product_id || '';
+      document.getElementById('f-name').value = item.name || '';
+      const stepsDiv = document.getElementById('route-steps');
+      stepsDiv.innerHTML = '';
+      (item.steps || []).forEach((s, i) => {
+        addRouteStep(s.process_id, s.process_time_per_unit, s.step_order);
+      });
+    } else {
+      for (const f of entity.fields) {
+        const el = document.getElementById(`f-${f}`);
+        if (el) el.value = item[f] || '';
+      }
+    }
+  } catch(e) { console.error(e); }
+}
+
+let routeStepCounter = 0;
+async function addRouteStep(processId, processTime, stepOrder) {
+  const stepsDiv = document.getElementById('route-steps');
+  const idx = routeStepCounter++;
+  let processOptions = '';
+  try {
+    const processes = await fetch(`${API}/options/processes`).then(r => r.json());
+    processOptions = processes.map(p => `<option value="${p.value}" ${p.value==processId?'selected':''}>${p.label}</option>`).join('');
+  } catch(e) {}
+  stepsDiv.innerHTML += `
+    <div class="form-row" data-step-idx="${idx}">
+      <div class="form-group"><label>工序</label><select class="step-process">${processOptions}</select></div>
+      <div class="form-group"><label>单件工时(分钟)</label><input class="step-time" type="number" step="0.01" value="${processTime||0}"></div>
+      <div class="form-group"><label>顺序</label><input class="step-order" type="number" value="${stepOrder||idx}"></div>
+      <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">删除</button>
+    </div>`;
+}
+
+async function saveModal() {
+  const entity = MASTER_ENTITIES.find(e => e.key === currentMasterType);
+  if (!entity) return;
+  
+  let data = {};
+  
+  if (currentMasterType === 'product-routes') {
+    data.product_id = parseInt(document.getElementById('f-product_id').value);
+    data.name = document.getElementById('f-name').value;
+    data.steps = [];
+    document.querySelectorAll('#route-steps .form-row').forEach(row => {
+      const processId = parseInt(row.querySelector('.step-process').value);
+      const time = parseFloat(row.querySelector('.step-time').value);
+      const order = parseInt(row.querySelector('.step-order').value);
+      if (processId) data.steps.push({ process_id: processId, process_time_per_unit: time, step_order: order });
+    });
+  } else {
+    for (const f of entity.fields) {
+      const el = document.getElementById(`f-${f}`);
+      if (el) data[f] = el.value;
+    }
+  }
+  
+  try {
+    const id = currentEditId;
+    
+    let res;
+    if (id) {
+      res = await fetch(`${API}/${currentMasterType}/${id}`, {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+      });
+    } else {
+      res = await fetch(`${API}/${currentMasterType}`, {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+      });
+    }
+    if (!res.ok) throw new Error((await res.json()).detail || '保存失败');
+    toast('保存成功');
+    closeModal();
+    loadMasterData();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function editMaster(id) {
+  openMasterModal(id);
+}
+
+async function deleteMaster(id) {
+  if (!confirm('确认删除？此操作不可恢复。')) return;
+  try {
+    await fetch(`${API}/${currentMasterType}/${id}`, { method: 'DELETE' });
+    toast('删除成功');
+    loadMasterData();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function closeModal() {
+  currentEditId = null;
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+// ========== 排程执行 ==========
+function initSchedulePage() {
+  loadScheduleProducts();
+}
+
+async function loadScheduleProducts() {
+  const div = document.getElementById('schedule-products');
+  try {
+    const products = await fetch(`${API}/products`).then(r => r.json());
+    div.innerHTML = products.map(p => `
+      <div class="form-row schedule-product-row">
+        <div class="form-group"><label>产品</label><select class="sch-product-id">
+          ${products.map(pp => `<option value="${pp.id}">${pp.name}</option>`).join('')}
+        </select></div>
+        <div class="form-group"><label>数量</label><input type="number" class="sch-qty" value="100" min="1" style="width:100px;"></div>
+        <div class="form-group"><label>交期</label><input type="date" class="sch-due" style="width:140px;"></div>
+        <div class="form-group"><label>&nbsp;</label><button class="btn btn-danger btn-sm" onclick="this.parentElement.parentElement.remove()">删除</button></div>
+      </div>
+    `).join('') || '<p>暂无产品数据，请先在基础数据中添加产品</p>';
+  } catch(e) { div.innerHTML = '<p>加载产品失败</p>'; }
+}
+
+function addScheduleProduct() {
+  const div = document.getElementById('schedule-products');
+  fetch(`${API}/products`).then(r => r.json()).then(products => {
+    const today = new Date().toISOString().split('T')[0];
+    div.insertAdjacentHTML('beforeend', `
+      <div class="form-row schedule-product-row">
+        <div class="form-group"><label>产品</label><select class="sch-product-id">
+          ${products.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+        </select></div>
+        <div class="form-group"><label>数量</label><input type="number" class="sch-qty" value="100" min="1" style="width:100px;"></div>
+        <div class="form-group"><label>交期</label><input type="date" class="sch-due" value="${today}" style="width:140px;"></div>
+        <div class="form-group"><label>&nbsp;</label><button class="btn btn-danger btn-sm" onclick="this.parentElement.parentElement.remove()">删除</button></div>
+      </div>
+    `);
+  });
+}
+
+async function runSchedule() {
+  const rows = document.querySelectorAll('.schedule-product-row');
+  const products = [];
+  rows.forEach(row => {
+    const id = parseInt(row.querySelector('.sch-product-id').value);
+    const qty = parseInt(row.querySelector('.sch-qty').value);
+    const due = row.querySelector('.sch-due').value;
+    if (id && qty > 0) products.push({ product_id: id, quantity: qty, due_date: due + 'T23:59:59' });
+  });
+  if (products.length === 0) { toast('请至少添加一个产品', 'error'); return; }
+  
+  try {
+    const res = await fetch(`${API}/schedule/run`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ products })
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || '排程失败');
+    const result = await res.json();
+    document.getElementById('schedule-result').innerHTML = `<div class="tag tag-green">✅ 排程完成！共生成 ${result.tasks} 个任务 (批次: ${result.batch_id})</div>`;
+    toast('排程完成！请切换到甘特图查看');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function clearSchedule() {
+  document.getElementById('schedule-products').innerHTML = '';
+  document.getElementById('schedule-result').innerHTML = '';
+}
+
+// ========== 甘特图 ==========
+async function loadBatches() {
+  try {
+    const batches = await fetch(`${API}/schedule/batches`).then(r => r.json());
+    const sel = document.getElementById('gantt-batch-select');
+    sel.innerHTML = batches.map(b => `<option value="${b.batch_id}">${b.batch_id} (${new Date(b.created_at).toLocaleString()})</option>`).join('');
+    
+    const exportSel = document.getElementById('export-batch');
+    if (exportSel) exportSel.innerHTML = sel.innerHTML;
+    
+    if (batches.length > 0) loadGantt();
+  } catch(e) {}
+}
+
+async function loadGantt() {
+  const container = document.getElementById('gantt-container');
+  const batchId = document.getElementById('gantt-batch-select').value;
+  if (!batchId) { container.innerHTML = '<p class="empty-state">请先执行排程</p>'; return; }
+  
+  try {
+    const tasks = await fetch(`${API}/schedule/tasks?batch_id=${batchId}`).then(r => r.json());
+    ganttTasks = tasks;
+    renderGantt(tasks);
+  } catch(e) { container.innerHTML = `<p class="empty-state">加载失败: ${e.message}</p>`; }
+}
+
+function renderGantt(tasks) {
+  const container = document.getElementById('gantt-container');
+  if (!tasks.length) { container.innerHTML = '<p class="empty-state">暂无排程数据</p>'; return; }
+  
+  // 构建颜色映射
+  const products = [...new Set(tasks.map(t => t.product_name))];
+  productColors = {};
+  products.forEach((p, i) => { productColors[p] = `color-${i % 10}`; });
+  
+  // 构建时间范围
+  const times = tasks.map(t => new Date(t.start_time));
+  const minTime = new Date(Math.min(...times));
+  const maxTime = new Date(Math.max(...tasks.map(t => new Date(t.end_time))));
+  minTime.setHours(minTime.getHours() - 1, 0, 0, 0);
+  maxTime.setHours(maxTime.getHours() + 1, 0, 0, 0);
+  
+  const totalMinutes = (maxTime - minTime) / 60000;
+  const pixelsPerMinute = Math.max(1, 1200 / totalMinutes);
+  // 存全局，供拖拽落点计算时间
+  ganttMinTime = new Date(minTime);
+  ganttPpm = pixelsPerMinute;
+  
+  // 构建行数据
+  let rows = [];
+  if (ganttViewMode === 'device') {
+    const deviceIds = [...new Set(tasks.map(t => t.device_id))];
+    rows = deviceIds.map(did => {
+      const t = tasks.find(x => x.device_id === did);
+      return { id: `d-${did}`, label: `${t.device_group_name||''} / ${t.device_name||''}`, type: 'device', tasks: tasks.filter(x => x.device_id === did) };
+    });
+  } else {
+    const empIds = [...new Set(tasks.map(t => t.employee_id).filter(Boolean))];
+    rows = empIds.map(eid => {
+      const t = tasks.find(x => x.employee_id === eid);
+      return { id: `e-${eid}`, label: `${t.employee_group_name||''} / ${t.employee_name||''}`, type: 'employee', tasks: tasks.filter(x => x.employee_id === eid) };
+    });
+    // 未分配员工的任务
+    const unassigned = tasks.filter(t => !t.employee_id);
+    if (unassigned.length) rows.push({ id: 'e-0', label: '未分配', type: 'employee', tasks: unassigned });
+  }
+  
+  let html = '<div class="gantt-header"><div class="gantt-left-header">' + (ganttViewMode==='device'?'设备':'员工') + '</div>';
+  html += '<div class="gantt-timeline"><div class="time-axis">';
+  
+  // 时间轴
+  for (let m = 0; m < totalMinutes; m += 60) {
+    const dt = new Date(minTime.getTime() + m * 60000);
+    html += `<div class="time-axis-cell">${dt.getHours()}:00</div>`;
+  }
+  html += '</div></div></div>';
+  
+  // 行
+  rows.forEach(row => {
+    html += `<div class="gantt-row"><div class="gantt-row-label">${row.label}</div>`;
+    html += '<div class="gantt-row-bars" style="position:relative;width:' + (totalMinutes * pixelsPerMinute) + 'px;" data-row-id="' + row.id + '" data-row-type="' + row.type + '" ondragover="event.preventDefault()" ondrop="dropTask(event, \'' + row.id + '\', \'' + row.type + '\')">';
+    
+    row.tasks.forEach(task => {
+      const startMin = (new Date(task.start_time) - minTime) / 60000;
+      const durationMin = task.duration_minutes || ((new Date(task.end_time) - new Date(task.start_time)) / 60000);
+      const left = startMin * pixelsPerMinute;
+      const width = Math.max(durationMin * pixelsPerMinute, 20);
+      const colorClass = productColors[task.product_name] || 'color-0';
+      const lockedClass = task.is_locked ? ' locked' : '';
+      
+      html += `<div class="gantt-bar ${colorClass}${lockedClass}" 
+        style="left:${left}px;width:${width}px;"
+        title="${task.product_name} - ${task.process_name} | 数量:${task.quantity} | ${task.employee_name||'未分配'} | ${new Date(task.start_time).toLocaleString()} ~ ${new Date(task.end_time).toLocaleString()} ${task.is_locked?'（已锁定，拖动后自动重算）':'（拖动可调整设备/员工/时间）'}"
+        data-task-id="${task.id}"
+        draggable="true"
+        ondragstart="dragTask(event, ${task.id})"
+        onclick="toggleTaskLock(${task.id})">
+        ${task.is_locked?'🔒 ':''}${task.product_name} ${task.process_name} (${task.quantity})
+      </div>`;
+    });
+    
+    html += '</div></div>';
+  });
+  
+  container.innerHTML = html;
+}
+
+function switchGanttView(mode) {
+  ganttViewMode = mode;
+  document.querySelectorAll('.view-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById(`gantt-view-${mode}`).classList.add('active');
+  renderGantt(ganttTasks);
+}
+
+let dragTaskId = null;
+function dragTask(event, taskId) {
+  dragTaskId = taskId;
+  event.dataTransfer.setData('text/plain', taskId.toString());
+}
+
+// 拖拽落点：变更设备/员工/开始时间并联动重算
+async function dropTask(event, rowId, rowType) {
+  event.preventDefault();
+  if (!dragTaskId) return;
+  const taskId = dragTaskId;
+  const barsEl = event.currentTarget;
+  const rect = barsEl.getBoundingClientRect();
+  const offsetX = event.clientX - rect.left;
+  const minutes = Math.max(0, offsetX / (ganttPpm || 1));
+  const start = new Date(ganttMinTime.getTime() + minutes * 60000);
+  const payload = { start_time: start.getTime() };
+
+  if (rowType === 'device') {
+    const did = parseInt(rowId.replace('d-', ''));
+    if (!isNaN(did)) payload.device_id = did;
+  } else if (rowType === 'employee') {
+    const eid = rowId.replace('e-', '');
+    if (eid !== '') payload.employee_id = parseInt(eid);
+  }
+
+  try {
+    const res = await fetch(`${API}/schedule/tasks/${taskId}/move`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast(data.detail || '移动失败', 'error');
+    } else {
+      toast('已移动并锁定，正在进行联动重算', 'info');
+      await loadGantt();
+    }
+  } catch(e) {
+    toast('移动失败：' + e.message, 'error');
+  } finally {
+    dragTaskId = null;
+  }
+}
+
+async function toggleTaskLock(taskId) {
+  const task = ganttTasks.find(t => t.id === taskId);
+  if (!task) return;
+  try {
+    await fetch(`${API}/schedule/tasks/${taskId}/lock`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ is_locked: !task.is_locked })
+    });
+    task.is_locked = !task.is_locked;
+    renderGantt(ganttTasks);
+    toast(task.is_locked ? '任务已锁定' : '任务已解锁');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function unlockAllTasks() {
+  if (!confirm('确认解锁所有任务？')) return;
+  try {
+    await fetch(`${API}/schedule/unlock-all`, { method: 'POST' });
+    ganttTasks.forEach(t => t.is_locked = false);
+    renderGantt(ganttTasks);
+    toast('全部已解锁');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function rerunSchedule() {
+  const batchId = document.getElementById('gantt-batch-select').value;
+  if (!batchId) return;
+  try {
+    // 获取当前批次的排程参数
+    const tasks = await fetch(`${API}/schedule/tasks?batch_id=${batchId}`).then(r => r.json());
+    const productIds = [...new Set(tasks.map(t => t.product_id))];
+    const products = productIds.map(pid => {
+      const t = tasks.find(x => x.product_id === pid);
+      return { product_id: pid, quantity: t.quantity, due_date: t.due_date };
+    });
+    
+    const res = await fetch(`${API}/schedule/rerun`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ batch_id: batchId, products })
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || '重算失败');
+    toast('重算完成');
+    loadGantt();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ========== Excel导出 ==========
+async function exportExcel() {
+  const batchId = document.getElementById('export-batch').value;
+  const timeRange = document.getElementById('export-timerange').value;
+  try {
+    const res = await fetch(`${API}/export/excel`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ batch_id: batchId, time_range: timeRange })
+    });
+    if (!res.ok) throw new Error('导出失败');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `派工单_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('导出成功');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function seedDemo() {
+  if (!confirm('确认载入演示数据？\n\n载入的示例数据仅用于快速体验，仅在基础数据为空时有效。')) return;
+  try {
+    const res = await fetch(`${API}/seed/demo`, { method: 'POST' });
+    const d = await res.json();
+    if (!res.ok) { toast(d.detail || '载入示例数据失败', 'error'); return; }
+    toast(d.message || '示例数据已载入');
+    initMasterData();
+  } catch(e) { toast('载入示例数据失败', 'error'); }
+}
+
+async function exportAllData() {
+  try {
+    const res = await fetch(`${API}/export/all-data`);
+    if (!res.ok) throw new Error('导出失败');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `基础数据_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('导出成功');
+  } catch(e) { toast(e.message, 'error'); }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+[Unit]
+Description=生产排程系统 (Production Scheduler)
+After=network.target
+
+[Service]
+Type=simple
+# 修改为你的实际部署路径
+WorkingDirectory=/opt/production-scheduler
+ExecStart=/opt/production-scheduler/venv/bin/python /opt/production-scheduler/backend/main.py --port 8899
+Restart=always
+RestartSec=5
+User=root
+# 日志输出
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
