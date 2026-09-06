@@ -778,6 +778,7 @@ function renderGantt(tasks) {
         data-task-id="${task.id}"
         draggable="true"
         ondragstart="dragTask(event, ${task.id})"
+        ondragend="cancelDrag()"
         onclick="toggleTaskLock(${task.id})">
         ${task.is_locked?'🔒 ':''}${task.product_name} ${task.process_name} (${task.quantity})
       </div>`;
@@ -796,10 +797,14 @@ function switchGanttView(mode) {
   renderGantt(ganttTasks);
 }
 
-let dragTaskId = null;
 function dragTask(event, taskId) {
   dragTaskId = taskId;
-  event.dataTransfer.setData('text/plain', taskId.toString());
+  try {
+    event.dataTransfer.setData('text/plain', String(taskId));
+    event.dataTransfer.effectAllowed = 'move';
+  } catch (e) {
+    dragTaskId = null;
+  }
 }
 
 // 拖拽落点：变更设备/员工/开始时间并联动重算
@@ -832,13 +837,18 @@ async function dropTask(event, rowId, rowType) {
       toast(data.detail || '移动失败', 'error');
     } else {
       toast('已移动并锁定，正在进行联动重算', 'info');
-      await loadGantt();
+      // 让浏览器先结束当前拖拽事件，再刷新甘特图，避免页面假死
+      requestAnimationFrame(() => loadGantt());
     }
   } catch(e) {
     toast('移动失败：' + e.message, 'error');
   } finally {
     dragTaskId = null;
   }
+}
+
+function cancelDrag() {
+  dragTaskId = null;
 }
 
 async function toggleTaskLock(taskId) {
