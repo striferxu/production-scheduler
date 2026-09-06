@@ -772,15 +772,18 @@ function renderGantt(tasks) {
       const colorClass = productColors[task.product_name] || 'color-0';
       const lockedClass = task.is_locked ? ' locked' : '';
       
-      html += `<div class="gantt-bar ${colorClass}${lockedClass}" 
-        style="left:${left}px;width:${width}px;"
-        title="${task.product_name} - ${task.process_name} | 数量:${task.quantity} | ${task.employee_name||'未分配'} | ${new Date(task.start_time).toLocaleString()} ~ ${new Date(task.end_time).toLocaleString()} ${task.is_locked?'（已锁定，拖动后自动重算）':'（拖动可调整设备/员工/时间）'}"
-        data-task-id="${task.id}"
-        draggable="true"
-        ondragstart="dragTask(event, ${task.id})"
-        ondragend="cancelDrag()"
-        onclick="toggleTaskLock(${task.id})">
-        ${task.is_locked?'🔒 ':''}${task.product_name} ${task.process_name} (${task.quantity})
+      const taskLabel = `${task.is_locked?'🔒 ':''}${task.product_name} ${task.process_name} (${task.quantity})`;
+      const tooltip = `${task.product_name} - ${task.process_name} | 数量:${task.quantity} | ${task.employee_name||'未分配'} | ${new Date(task.start_time).toLocaleString()} ~ ${new Date(task.end_time).toLocaleString()} ${task.is_locked?'（已锁定，拖动后自动重算）':'（拖动可调整设备/员工/时间）'}`;
+      
+      html += `<div class=\"gantt-bar ${colorClass}${lockedClass}\" 
+        style=\"left:${left}px;width:${width}px;\"
+        title=\"${tooltip.replace(/"/g, '&quot;')}\"
+        data-task-id=\"${task.id}\"
+        draggable=\"true\"
+        ondragstart=\"dragTask(event, ${task.id})\"
+        ondragend=\"cancelDrag()\"
+        onclick=\"toggleTaskLock(${task.id})\">
+        ${taskLabel}
       </div>`;
     });
     
@@ -802,13 +805,17 @@ function dragTask(event, taskId) {
   try {
     event.dataTransfer.setData('text/plain', String(taskId));
     event.dataTransfer.effectAllowed = 'move';
+    // 使用透明拖拽图像，减少浏览器在拖动时的渲染开销
+    const img = new Image();
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs=';
+    event.dataTransfer.setDragImage(img, 0, 0);
   } catch (e) {
     dragTaskId = null;
   }
 }
 
 // 拖拽落点：变更设备/员工/开始时间并联动重算
-async function dropTask(event, rowId, rowType) {
+function dropTask(event, rowId, rowType) {
   event.preventDefault();
   if (!dragTaskId) return;
   const taskId = dragTaskId;
@@ -827,24 +834,29 @@ async function dropTask(event, rowId, rowType) {
     if (eid !== '') payload.employee_id = parseInt(eid);
   }
 
-  try {
-    const res = await fetch(`${API}/schedule/tasks/${taskId}/move`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
+  const indicator = document.getElementById('gantt-status') || document.createElement('div');
+  indicator.id = 'gantt-status';
+  indicator.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;background:#2563eb;color:#fff;padding:8px 12px;border-radius:8px;font-size:13px;box-shadow:0 6px 16px rgba(0,0,0,0.15);';
+  indicator.textContent = '正在联动重算...';
+  if (!indicator.parentElement) document.body.appendChild(indicator);
+  cancelDrag();
+
+  fetch(`${API}/schedule/tasks/${taskId}/move`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  }).then(res => res.json()).then(data => {
     if (!res.ok) {
       toast(data.detail || '移动失败', 'error');
     } else {
       toast('已移动并锁定，正在进行联动重算', 'info');
-      // 让浏览器先结束当前拖拽事件，再刷新甘特图，避免页面假死
-      requestAnimationFrame(() => loadGantt());
+      loadGantt().finally(() => {
+        indicator.remove();
+      });
     }
-  } catch(e) {
+  }).catch(e => {
     toast('移动失败：' + e.message, 'error');
-  } finally {
-    dragTaskId = null;
-  }
+    indicator.remove();
+  });
 }
 
 function cancelDrag() {
