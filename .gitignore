@@ -26,3 +26,4 @@ nohup.out
 
 # ---- 上传/临时 ----
 *.tmp
+scheduler_copy.db
