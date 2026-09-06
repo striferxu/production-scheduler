@@ -697,15 +697,18 @@ async function loadBatches() {
 }
 
 async function loadGantt() {
+  console.log('[gantt] loadGantt start');
   const container = document.getElementById('gantt-container');
   const batchId = document.getElementById('gantt-batch-select').value;
   if (!batchId) { container.innerHTML = '<p class="empty-state">请先执行排程</p>'; return; }
-  
+
   try {
     const tasks = await fetch(`${API}/schedule/tasks?batch_id=${batchId}`).then(r => r.json());
+    console.log('[gantt] loadGantt tasks', tasks.length);
     ganttTasks = tasks;
     renderGantt(tasks);
   } catch(e) { container.innerHTML = `<p class="empty-state">加载失败: ${e.message}</p>`; }
+  console.log('[gantt] loadGantt end');
 }
 
 function renderGantt(tasks) {
@@ -780,9 +783,9 @@ function renderGantt(tasks) {
         title=\"${tooltip.replace(/"/g, '&quot;')}\"
         data-task-id=\"${task.id}\"
         draggable=\"true\"
-        ondragstart=\"dragTask(event, ${task.id})\"
-        ondragend=\"cancelDrag()\"
-        onclick=\"toggleTaskLock(${task.id})\">
+        ondragstart="dragTask(event, ${task.id})"
+        ondragend="onDragEnd(event, ${task.id})"
+        onclick="toggleTaskLock(${task.id})">
         ${taskLabel}
       </div>`;
     });
@@ -801,6 +804,7 @@ function switchGanttView(mode) {
 }
 
 function dragTask(event, taskId) {
+  console.log('[gantt] dragTask start', taskId);
   dragTaskId = taskId;
   try {
     event.dataTransfer.setData('text/plain', String(taskId));
@@ -809,13 +813,16 @@ function dragTask(event, taskId) {
     const img = new Image();
     img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs=';
     event.dataTransfer.setDragImage(img, 0, 0);
+    console.log('[gantt] dragTask setData ok');
   } catch (e) {
+    console.error('[gantt] dragTask error', e);
     dragTaskId = null;
   }
 }
 
 // 拖拽落点：变更设备/员工/开始时间并联动重算
 function dropTask(event, rowId, rowType) {
+  console.log('[gantt] dropTask start', {rowId, rowType, dragTaskId});
   event.preventDefault();
   if (!dragTaskId) return;
   const taskId = dragTaskId;
@@ -841,22 +848,55 @@ function dropTask(event, rowId, rowType) {
   if (!indicator.parentElement) document.body.appendChild(indicator);
   cancelDrag();
 
+  console.log('[gantt] move request', taskId, payload);
   fetch(`${API}/schedule/tasks/${taskId}/move`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify(payload)
-  }).then(res => res.json()).then(data => {
+  }).then(res => {
+    console.log('[gantt] move response status', res.status);
+    return res.json().then(data => ({res, data}));
+  }).then(({res, data}) => {
+    console.log('[gantt] move response data', data);
     if (!res.ok) {
       toast(data.detail || '移动失败', 'error');
     } else {
       toast('已移动并锁定，正在进行联动重算', 'info');
-      loadGantt().finally(() => {
-        indicator.remove();
-      });
+      // 立即用返回的更新任务局部刷新，避免等待全量刷新导致拖动期间页面卡住
+      const idx = ganttTasks.findIndex(t => t.id === taskId);
+      console.log('[gantt] local refresh idx', idx, 'ganttTasks length', ganttTasks.length);
+      if (idx !== -1) {
+        ganttTasks[idx] = data;
+        renderGantt(ganttTasks);
+      }
+      // 后台异步拉取最新批次数据，完成最终一致性
+      setTimeout(() => {
+        fetch(`${API}/schedule/tasks?batch_id=${data.batch_id || batchId}`)
+          .then(r => r.json())
+          .then(list => {
+            console.log('[gantt] background refresh tasks', list.length);
+            ganttTasks = list;
+            renderGantt(list);
+          })
+          .catch(err => console.error('[gantt] background refresh failed', err));
+      }, 0);
     }
   }).catch(e => {
+    console.error('[gantt] move fetch error', e);
     toast('移动失败：' + e.message, 'error');
-    indicator.remove();
   });
+}
+
+function onDragEnd(event, taskId) {
+  console.log('[gantt] onDragEnd', taskId);
+  cancelDrag();
+  try {
+    if (event.dataTransfer) {
+      event.dataTransfer.clearData('text');
+      event.dataTransfer.dropEffect = 'none';
+    }
+  } catch (e) {
+    console.error('[gantt] onDragEnd clear error', e);
+  }
 }
 
 function cancelDrag() {
