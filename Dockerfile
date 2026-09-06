@@ -23,4 +23,4 @@ RUN mkdir -p /app/data && chmod -R a+w /app/data
 EXPOSE 8899
 
 # 直接以 Python 启动（无需 start.sh 的 venv/增量依赖逻辑，容器内已装好依赖）
-ENTRYPOINT ["python", "backend/main.py", "--host", "0.0.0.0", "--port", "8899"]
+ENTRYPOINT ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8899"]

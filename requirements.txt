@@ -5,3 +5,4 @@ sqlalchemy>=2.0
 openpyxl>=3.1
 passlib[bcrypt]>=1.7
 python-multipart>=0.0.9
+python-jose[cryptography]>=3.3

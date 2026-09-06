@@ -2,6 +2,7 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+import bcrypt
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -42,10 +43,15 @@ from passlib.context import CryptContext
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain, hashed):
-    return pwd_context.verify(plain, hashed)
+    if not plain:
+        return False
+    plain_bytes = plain.encode('utf-8')[:72]
+    hashed_bytes = hashed.encode('utf-8') if isinstance(hashed, str) else hashed
+    return bcrypt.checkpw(plain_bytes, hashed_bytes)
 
 def get_password_hash(password):
-    return pwd_context.hash(password)
+    pwd_bytes = (password or '').encode('utf-8')[:72]
+    return bcrypt.hashpw(pwd_bytes, bcrypt.gensalt()).decode('utf-8')
 
 # ========== 首页 ==========
 @app.get("/")
@@ -315,39 +321,51 @@ def list_processes(db: Session = Depends(get_db), _auth: User = Depends(get_curr
         d = model_to_dict(p)
         d['device_ids'] = [dev.id for dev in p.devices]
         d['device_group_ids'] = [dg.id for dg in p.device_groups]
+        d['device_id'] = d['device_ids'][0] if d['device_ids'] else None
+        d['device_group_id'] = d['device_group_ids'][0] if d['device_group_ids'] else None
         result.append(d)
     return result
 
+@app.get("/api/processes/{id}")
+def get_process(id: int, db: Session = Depends(get_db), _auth: User = Depends(get_current_user)):
+    p = crud_get(Process, db, id)
+    d = model_to_dict(p)
+    d['device_ids'] = [dev.id for dev in p.devices]
+    d['device_group_ids'] = [dg.id for dg in p.device_groups]
+    d['device_id'] = d['device_ids'][0] if d['device_ids'] else None
+    d['device_group_id'] = d['device_group_ids'][0] if d['device_group_ids'] else None
+    return d
+
 @app.post("/api/processes")
 def create_process(data: dict, db: Session = Depends(get_db), _auth: User = Depends(require_admin)):
-    device_ids = data.pop('device_ids', [])
-    device_group_ids = data.pop('device_group_ids', [])
+    device_id = data.pop('device_id', None)
+    device_group_id = data.pop('device_group_id', None)
     obj = Process(**{k: v for k, v in data.items() if hasattr(Process, k)})
     db.add(obj)
     db.flush()
-    for did in device_ids:
-        db.execute(process_device.insert().values(process_id=obj.id, device_id=did))
-    for dgid in device_group_ids:
-        db.execute(process_device_group.insert().values(process_id=obj.id, device_group_id=dgid))
+    if device_id:
+        db.execute(process_device.insert().values(process_id=obj.id, device_id=device_id))
+    if device_group_id:
+        db.execute(process_device_group.insert().values(process_id=obj.id, device_group_id=device_group_id))
     db.commit()
     return model_to_dict(obj)
 
 @app.put("/api/processes/{id}")
 def update_process(id: int, data: dict, db: Session = Depends(get_db), _auth: User = Depends(require_admin)):
     obj = crud_get(Process, db, id)
-    device_ids = data.pop('device_ids', None)
-    device_group_ids = data.pop('device_group_ids', None)
+    device_id = data.pop('device_id', None)
+    device_group_id = data.pop('device_group_id', None)
     for k, v in data.items():
         if hasattr(obj, k) and k != 'id':
             setattr(obj, k, v)
-    if device_ids is not None:
+    if device_id is not None:
         db.execute(process_device.delete().where(process_device.c.process_id == id))
-        for did in device_ids:
-            db.execute(process_device.insert().values(process_id=id, device_id=did))
-    if device_group_ids is not None:
+        if device_id:
+            db.execute(process_device.insert().values(process_id=id, device_id=device_id))
+    if device_group_id is not None:
         db.execute(process_device_group.delete().where(process_device_group.c.process_id == id))
-        for dgid in device_group_ids:
-            db.execute(process_device_group.insert().values(process_id=id, device_group_id=dgid))
+        if device_group_id:
+            db.execute(process_device_group.insert().values(process_id=id, device_group_id=device_group_id))
     db.commit()
     return model_to_dict(obj)
 
@@ -947,6 +965,7 @@ def get_options(entity_type: str, db: Session = Depends(get_db), _auth: User = D
         'product_categories': (ProductCategory, 'id', 'name'),
         'products': (Product, 'id', 'name'),
     }
+    entity_type = entity_type.replace('-', '_')
     if entity_type not in option_map:
         raise HTTPException(404, f"未知选项类型: {entity_type}")
     model, id_field, name_field = option_map[entity_type]

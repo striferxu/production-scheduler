@@ -317,7 +317,7 @@ const MASTER_ENTITIES = [
   { key: 'products', label: '产品', fields: ['name', 'category_id', 'description'] },
   { key: 'device-groups', label: '设备组', fields: ['name', 'description', 'work_start_time', 'work_end_time', 'status'] },
   { key: 'devices', label: '设备', fields: ['name', 'group_id', 'description', 'work_start_time', 'work_end_time', 'status'] },
-  { key: 'processes', label: '工序', fields: ['name', 'description'] },
+  { key: 'processes', label: '工序', fields: ['name', 'description', 'device_id'] },
   { key: 'product-routes', label: '工艺路线', fields: ['product_id', 'name'] },
   { key: 'shifts', label: '班次', fields: ['name', 'start_time', 'end_time', 'description'] },
   { key: 'rotations', label: '轮班模式', fields: ['name', 'cycle_days', 'description'] },
@@ -389,7 +389,6 @@ function openMasterModal(id) {
   } else {
     for (const f of entity.fields) {
       if (f.endsWith('_id')) {
-        const refKey = f.replace('_id', 's');
         html += `<div class="form-group"><label>${f}</label><select id="f-${f}"></select></div>`;
       } else {
         html += `<div class="form-group"><label>${f}</label><input id="f-${f}"></div>`;
@@ -411,27 +410,56 @@ function openMasterModal(id) {
 
 async function loadFormOptions() {
   const optionMap = {
-    'category_id': 'product-categories', 'group_id': 'device-groups',
-    'product_id': 'products', 'employee_code': null
+    'category_id': 'product-categories',
+    'group_id': 'device-groups',
+    'product_id': 'products',
+    'employee_code': null,
+    'device_id': 'devices'
   };
-  
-  for (const [field, key] of Object.entries(optionMap)) {
+
+  for (const [field, endpoint] of Object.entries(optionMap)) {
     const sel = document.getElementById(`f-${field}`);
-    if (sel && key) {
+    if (sel && endpoint) {
       try {
-        const items = await fetch(`${API}/options/${key}`).then(r => r.json());
-        sel.innerHTML = '<option value="">请选择</option>' + items.map(i => `<option value="${i.value}">${i.label}</option>`).join('');
-      } catch(e) {}
+        const items = await fetch(`${API}/${endpoint}`).then(r => {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+        sel.innerHTML = '<option value="">请选择</option>' + items.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+      } catch(e) {
+        console.error('下拉选项加载失败', field, e);
+        toast('下拉选项加载失败', 'error');
+      }
     }
   }
 }
 
 async function loadMasterItem(id) {
   try {
-    const item = await fetch(`${API}/${currentMasterType}/${id}`).then(r => r.json());
     const entity = MASTER_ENTITIES.find(e => e.key === currentMasterType);
     if (!entity) return;
-    
+
+    let item = null;
+    if (currentMasterType === 'product-routes') {
+      const res = await fetch(`${API}/${currentMasterType}/${id}`);
+      if (res.ok) {
+        item = await res.json();
+      } else {
+        const list = await fetch(`${API}/${currentMasterType}`).then(r => r.json());
+        item = list.find(x => x.id === id) || null;
+      }
+    } else {
+      const res = await fetch(`${API}/${currentMasterType}/${id}`);
+      if (res.ok) {
+        item = await res.json();
+      } else {
+        const list = await fetch(`${API}/${currentMasterType}`).then(r => r.json());
+        item = list.find(x => x.id === id) || null;
+      }
+    }
+
+    if (!item) return;
+
     if (currentMasterType === 'product-routes') {
       document.getElementById('f-product_id').value = item.product_id || '';
       document.getElementById('f-name').value = item.name || '';
@@ -440,6 +468,13 @@ async function loadMasterItem(id) {
       (item.steps || []).forEach((s, i) => {
         addRouteStep(s.process_id, s.process_time_per_unit, s.step_order);
       });
+    } else if (currentMasterType === 'processes') {
+      for (const f of entity.fields) {
+        const el = document.getElementById(`f-${f}`);
+        if (el) el.value = item[f] || '';
+      }
+      const devEl = document.getElementById('f-device_id');
+      if (devEl && item.device_id) devEl.value = item.device_id;
     } else {
       for (const f of entity.fields) {
         const el = document.getElementById(`f-${f}`);
@@ -487,6 +522,10 @@ async function saveModal() {
     for (const f of entity.fields) {
       const el = document.getElementById(`f-${f}`);
       if (el) data[f] = el.value;
+    }
+    if (currentMasterType === 'processes') {
+      const devEl = document.getElementById('f-device_id');
+      if (devEl) data.device_id = devEl.value ? parseInt(devEl.value) : null;
     }
   }
   
