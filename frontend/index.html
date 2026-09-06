@@ -317,7 +317,7 @@ const MASTER_ENTITIES = [
   { key: 'products', label: '产品', fields: ['name', 'category_id', 'description'] },
   { key: 'device-groups', label: '设备组', fields: ['name', 'description', 'work_start_time', 'work_end_time', 'status'] },
   { key: 'devices', label: '设备', fields: ['name', 'group_id', 'description', 'work_start_time', 'work_end_time', 'status'] },
-  { key: 'processes', label: '工序', fields: ['name', 'description', 'device_id'] },
+  { key: 'processes', label: '工序', fields: ['name', 'description', 'is_splittable', 'device_id', 'device_group_id'] },
   { key: 'product-routes', label: '工艺路线', fields: ['product_id', 'name'] },
   { key: 'shifts', label: '班次', fields: ['name', 'start_time', 'end_time', 'description'] },
   { key: 'rotations', label: '轮班模式', fields: ['name', 'cycle_days', 'description'] },
@@ -372,7 +372,7 @@ async function loadMasterData() {
   } catch(e) { wrap.innerHTML = `<p class="empty-state">加载失败: ${e.message}</p>`; }
 }
 
-function openMasterModal(id) {
+async function openMasterModal(id) {
   const entity = MASTER_ENTITIES.find(e => e.key === currentMasterType);
   if (!entity) return;
   currentEditId = id || null;
@@ -385,6 +385,13 @@ function openMasterModal(id) {
       <div class="form-group"><label>路线名称</label><input id="f-name"></div>
       <div id="route-steps"><h4 style="margin:12px 0 8px;">工序步骤</h4></div>
       <button type="button" class="btn btn-outline btn-sm" onclick="addRouteStep()">+ 添加工序</button>
+    `;
+  } else if (currentMasterType === 'processes') {
+    html = `
+      <div class="form-group"><label>工序名称</label><input id="f-name"></div>
+      <div class="form-group"><label>是否可拆分</label><input type="checkbox" id="f-is_splittable"></div>
+      <div class="form-group"><label>设备</label><select id="f-device_id"><option value="">请选择</option></select></div>
+      <div class="form-group"><label>设备组</label><select id="f-device_group_id"><option value="">请选择</option></select></div>
     `;
   } else {
     for (const f of entity.fields) {
@@ -399,12 +406,14 @@ function openMasterModal(id) {
   document.getElementById('modal-body').innerHTML = html;
   
   // 加载下拉选项
-  loadFormOptions();
-  
+  await loadFormOptions();
+
   if (id) {
     loadMasterItem(id);
+  } else if (currentMasterType === 'processes') {
+    bindProcessFormEvents();
   }
-  
+
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
@@ -414,22 +423,22 @@ async function loadFormOptions() {
     'group_id': 'device-groups',
     'product_id': 'products',
     'employee_code': null,
-    'device_id': 'devices'
+    'device_id': 'devices',
+    'device_group_id': 'device-groups'
   };
 
   for (const [field, endpoint] of Object.entries(optionMap)) {
     const sel = document.getElementById(`f-${field}`);
-    if (sel && endpoint) {
-      try {
-        const items = await fetch(`${API}/${endpoint}`).then(r => {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        });
-        sel.innerHTML = '<option value="">请选择</option>' + items.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
-      } catch(e) {
-        console.error('下拉选项加载失败', field, e);
-        toast('下拉选项加载失败', 'error');
-      }
+    if (!sel || !endpoint) continue;
+    try {
+      const items = await fetch(`${API}/${endpoint}`).then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      });
+      sel.innerHTML = '<option value="">请选择</option>' + items.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+    } catch(e) {
+      console.error('下拉选项加载失败', field, e);
+      toast('下拉选项加载失败', 'error');
     }
   }
 }
@@ -471,10 +480,18 @@ async function loadMasterItem(id) {
     } else if (currentMasterType === 'processes') {
       for (const f of entity.fields) {
         const el = document.getElementById(`f-${f}`);
-        if (el) el.value = item[f] || '';
+        if (!el) continue;
+        if (f === 'is_splittable') {
+          el.checked = !!item[f];
+        } else {
+          el.value = item[f] || '';
+        }
       }
       const devEl = document.getElementById('f-device_id');
+      const grpEl = document.getElementById('f-device_group_id');
       if (devEl && item.device_id) devEl.value = item.device_id;
+      if (grpEl && item.device_group_id) grpEl.value = item.device_group_id;
+      bindProcessFormEvents();
     } else {
       for (const f of entity.fields) {
         const el = document.getElementById(`f-${f}`);
@@ -482,6 +499,25 @@ async function loadMasterItem(id) {
       }
     }
   } catch(e) { console.error(e); }
+}
+
+async function bindProcessFormEvents() {
+  const devEl = document.getElementById('f-device_id');
+  const grpEl = document.getElementById('f-device_group_id');
+  if (!devEl || !grpEl) return;
+  if (!bindProcessFormEvents._bound) {
+    devEl.addEventListener('change', async () => {
+      const deviceId = parseInt(devEl.value || '0');
+      if (!deviceId) return;
+      if (grpEl.value) return;
+      try {
+        const devices = await fetch(`${API}/devices`).then(r => r.json());
+        const device = devices.find(x => x.id === deviceId);
+        if (device && device.group_id) grpEl.value = device.group_id;
+      } catch (e) {}
+    });
+    bindProcessFormEvents._bound = true;
+  }
 }
 
 let routeStepCounter = 0;
@@ -521,11 +557,23 @@ async function saveModal() {
   } else {
     for (const f of entity.fields) {
       const el = document.getElementById(`f-${f}`);
-      if (el) data[f] = el.value;
+      if (!el) continue;
+      if (currentMasterType === 'processes' && f === 'is_splittable') {
+        data[f] = el.checked;
+      } else {
+        data[f] = el.value;
+      }
     }
     if (currentMasterType === 'processes') {
       const devEl = document.getElementById('f-device_id');
-      if (devEl) data.device_id = devEl.value ? parseInt(devEl.value) : null;
+      const grpEl = document.getElementById('f-device_group_id');
+      const deviceId = devEl ? parseInt(devEl.value || '0') : null;
+      const groupId = grpEl ? parseInt(grpEl.value || '0') : null;
+      data.device_id = deviceId || null;
+      data.device_group_id = groupId || null;
+      if (!data.device_id && !data.device_group_id) {
+        throw new Error('设备和设备组不能同时为空');
+      }
     }
   }
   
@@ -550,7 +598,7 @@ async function saveModal() {
 }
 
 async function editMaster(id) {
-  openMasterModal(id);
+  await openMasterModal(id);
 }
 
 async function deleteMaster(id) {
