@@ -136,20 +136,34 @@ class SchedulerEngine:
         allowed_status = {'available', 'normal'}
         devices = []
         seen_ids = set()
-        
-        # 绑定的具体设备
-        for d in process.devices:
+
+        # 优先使用新的直接字段
+        if getattr(process, 'device_id', None):
+            dev = db.query(Device).get(process.device_id)
+            if dev and dev.status in allowed_status and dev.id not in seen_ids:
+                devices.append(dev)
+                seen_ids.add(dev.id)
+
+        if getattr(process, 'device_group_id', None):
+            group = db.query(DeviceGroup).get(process.device_group_id)
+            if group:
+                for d in group.devices:
+                    if d.status in allowed_status and d.id not in seen_ids:
+                        devices.append(d)
+                        seen_ids.add(d.id)
+
+        # 回退到旧的多对多关系，兼容历史数据
+        for d in getattr(process, 'devices', []) or []:
             if d.status in allowed_status and d.id not in seen_ids:
                 devices.append(d)
                 seen_ids.add(d.id)
-        
-        # 绑定的设备组中的设备
-        for dg in process.device_groups:
+
+        for dg in getattr(process, 'device_groups', []) or []:
             for d in dg.devices:
                 if d.status in allowed_status and d.id not in seen_ids:
                     devices.append(d)
                     seen_ids.add(d.id)
-        
+
         return devices
     
     def _get_available_employees(self, process: Process, devices: List[Device], db: Session) -> List[Employee]:
