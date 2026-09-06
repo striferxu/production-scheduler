@@ -778,13 +778,11 @@ function renderGantt(tasks) {
       const taskLabel = `${task.is_locked?'🔒 ':''}${task.product_name} ${task.process_name} (${task.quantity})`;
       const tooltip = `${task.product_name} - ${task.process_name} | 数量:${task.quantity} | ${task.employee_name||'未分配'} | ${new Date(task.start_time).toLocaleString()} ~ ${new Date(task.end_time).toLocaleString()} ${task.is_locked?'（已锁定，拖动后自动重算）':'（拖动可调整设备/员工/时间）'}`;
       
-      html += `<div class=\"gantt-bar ${colorClass}${lockedClass}\" 
-        style=\"left:${left}px;width:${width}px;\"
-        title=\"${tooltip.replace(/"/g, '&quot;')}\"
-        data-task-id=\"${task.id}\"
-        draggable=\"true\"
-        ondragstart="dragTask(event, ${task.id})"
-        ondragend="onDragEnd(event, ${task.id})"
+      html += `<div class="gantt-bar ${colorClass}${lockedClass}"
+        style="left:${left}px;width:${width}px;"
+        title="${tooltip.replace(/"/g, '&quot;')}"
+        data-task-id="${task.id}"
+        onmousedown="startGanttDrag(event, ${task.id})"
         onclick="toggleTaskLock(${task.id})">
         ${taskLabel}
       </div>`;
