@@ -133,19 +133,20 @@ class SchedulerEngine:
     
     def _get_available_devices(self, process: Process) -> List[Device]:
         """获取工序可用的设备列表"""
+        allowed_status = {'available', 'normal'}
         devices = []
         seen_ids = set()
         
         # 绑定的具体设备
         for d in process.devices:
-            if d.status == 'available' and d.id not in seen_ids:
+            if d.status in allowed_status and d.id not in seen_ids:
                 devices.append(d)
                 seen_ids.add(d.id)
         
         # 绑定的设备组中的设备
         for dg in process.device_groups:
             for d in dg.devices:
-                if d.status == 'available' and d.id not in seen_ids:
+                if d.status in allowed_status and d.id not in seen_ids:
                     devices.append(d)
                     seen_ids.add(d.id)
         
